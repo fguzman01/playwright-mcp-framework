@@ -1,0 +1,26 @@
+{
+  "name": "playwright-mcp-framework",
+  "version": "1.0.0",
+  "description": "Playwright MCP Framework with TypeScript",
+  "main": "index.js",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "test:ui": "playwright test --ui",
+    "demo": "ts-node scripts/demo-human.ts",
+    "demo:error": "ts-node scripts/demo-error.ts",
+    "demo:type-error": "ts-node scripts/demo-type-error.ts",
+    "demo:clean": "ts-node scripts/demo-clean.ts",
+    "mcp": "ts-node src/mcp/server.ts"
+  },
+  "keywords": ["playwright", "testing", "typescript"],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@playwright/test": "^1.48.0",
+    "@types/node": "^22.10.2",
+    "playwright": "^1.48.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.7.2"
+  }
+}
