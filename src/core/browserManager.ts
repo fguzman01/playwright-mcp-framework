@@ -94,6 +94,48 @@ class BrowserManager {
   }
 
   /**
+   * Get the current page title
+   * 
+   * @returns The page title
+   * @throws Error if browser is not launched
+   */
+  async getTitle(): Promise<string> {
+    this.ensureLaunched('getTitle');
+    return await this.page!.title();
+  }
+
+  /**
+   * Get the current page URL
+   * 
+   * @returns The current URL
+   * @throws Error if browser is not launched
+   */
+  async getUrl(): Promise<string> {
+    this.ensureLaunched('getUrl');
+    return this.page!.url();
+  }
+
+  /**
+   * Wait for a selector to be visible
+   * 
+   * @param selector - CSS selector to wait for
+   * @param options - Wait options (timeoutMs)
+   * @throws Error if element is not visible within timeout
+   */
+  async waitForSelector(selector: string, options?: { timeoutMs?: number }): Promise<void> {
+    this.ensureLaunched('waitForSelector');
+    
+    const timeout = options?.timeoutMs ?? config.defaultTimeoutMs;
+    
+    await this.runStep(`wait for selector "${selector}"`, async () => {
+      await this.page!.locator(selector).first().waitFor({
+        state: 'visible',
+        timeout,
+      });
+    });
+  }
+
+  /**
    * Find an element using a selector
    * Returns a Playwright Locator (does not wait or verify existence)
    * 
@@ -164,6 +206,65 @@ class BrowserManager {
           `Type failed for selector "${selector}" (timeout ${timeout}ms): ${error.message}`,
           { cause: error }
         );
+      }
+    });
+  }
+
+  /**
+   * Get information about an element
+   * 
+   * @param selector - Selector for element to inspect
+   * @param options - Options (timeoutMs)
+   * @returns Element information including found status, tag, text, and bounding box
+   * @throws Error if browser is not launched
+   */
+  async getElementInfo(
+    selector: string,
+    options?: { timeoutMs?: number }
+  ): Promise<{
+    selector: string;
+    found: boolean;
+    tag?: string;
+    text?: string;
+    boundingBox?: { x: number; y: number; width: number; height: number };
+  }> {
+    this.ensureLaunched('getElementInfo');
+
+    const timeout = options?.timeoutMs ?? config.defaultTimeoutMs;
+
+    return await this.runStep(`get element info for "${selector}"`, async () => {
+      try {
+        // Use locator-only approach
+        const loc = this.page!.locator(selector).first();
+
+        // Wait for element to be attached (does not throw if timeout)
+        await loc.waitFor({ state: 'attached', timeout });
+
+        // Element was found, get info
+        const tag = await loc.evaluate((el) => el.tagName.toLowerCase());
+        
+        let text = await loc.innerText();
+        // Truncate text to max 200 chars
+        if (text && text.length > 200) {
+          text = text.substring(0, 200) + '...';
+        }
+
+        const boundingBox = await loc.boundingBox();
+
+        return {
+          selector,
+          found: true,
+          tag,
+          text,
+          ...(boundingBox && { boundingBox }),
+        };
+      } catch (error: any) {
+        // Element not found within timeout - this is not an error for this method
+        logger.debug(`Element not found: "${selector}" (timeout ${timeout}ms)`);
+        return {
+          selector,
+          found: false,
+        };
       }
     });
   }

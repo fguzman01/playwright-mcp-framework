@@ -7,11 +7,16 @@
     "test": "playwright test",
     "test:headed": "playwright test --headed",
     "test:ui": "playwright test --ui",
+    "test:mcp": "node --test --require ts-node/register tests/mcp.smoke.test.ts",
     "demo": "ts-node scripts/demo-human.ts",
     "demo:error": "ts-node scripts/demo-error.ts",
     "demo:type-error": "ts-node scripts/demo-type-error.ts",
     "demo:clean": "ts-node scripts/demo-clean.ts",
-    "mcp": "ts-node src/mcp/server.ts"
+    "demo:mcp": "scripts\\mcp-demo.bat",
+    "mcp": "ts-node src/mcp/server.ts",
+    "poc:1": "ts-node scripts/poc-1-basic.ts",
+    "poc:2": "ts-node scripts/poc-2-saucedemo-login.ts",
+    "poc:2:mcp": "powershell -ExecutionPolicy Bypass -File scripts/mcp-poc2-saucedemo.ps1"
   },
   "keywords": ["playwright", "testing", "typescript"],
   "author": "",

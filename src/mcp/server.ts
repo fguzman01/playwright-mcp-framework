@@ -33,6 +33,7 @@ const ErrorCode = {
   METHOD_NOT_FOUND: -32601,
   INVALID_PARAMS: -32602,
   INTERNAL_ERROR: -32603,
+  NO_BROWSER_SESSION: -32000,
 } as const;
 
 /**
@@ -251,6 +252,68 @@ export class MCPServer {
           required: [],
         },
       },
+      {
+        name: 'browser_find',
+        description: 'Find element info (tag, text, bounding box)',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            selector: {
+              type: 'string',
+              description: 'CSS selector',
+            },
+            timeoutMs: {
+              type: 'number',
+              description: 'Timeout in ms',
+            },
+          },
+          required: ['selector'],
+        },
+      },
+      {
+        name: 'browser_click',
+        description: 'Click an element by CSS selector',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            selector: {
+              type: 'string',
+              description: 'CSS selector',
+            },
+            timeoutMs: {
+              type: 'number',
+              description: 'Timeout in ms',
+            },
+          },
+          required: ['selector'],
+        },
+      },
+      {
+        name: 'browser_type',
+        description: 'Type text into an element',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            selector: {
+              type: 'string',
+              description: 'CSS selector',
+            },
+            text: {
+              type: 'string',
+              description: 'Text to type',
+            },
+            timeoutMs: {
+              type: 'number',
+              description: 'Timeout in ms',
+            },
+            clear: {
+              type: 'boolean',
+              description: 'Clear existing text before typing',
+            },
+          },
+          required: ['selector', 'text'],
+        },
+      },
     ];
 
     this.sendResult(id, { tools });
@@ -291,9 +354,39 @@ export class MCPServer {
         await this.toolBrowserQuit(args || {}, id);
         break;
 
+      case 'browser_find':
+        await this.toolBrowserFind(args || {}, id);
+        break;
+
+      case 'browser_click':
+        await this.toolBrowserClick(args || {}, id);
+        break;
+
+      case 'browser_type':
+        await this.toolBrowserType(args || {}, id);
+        break;
+
       default:
         this.sendError(id, ErrorCode.METHOD_NOT_FOUND, `Unknown tool: ${name}`);
     }
+  }
+
+  /**
+   * Require active browser session before executing tool
+   * 
+   * @param id - Request ID for error response
+   * @returns true if session is active, false if not (and error already sent)
+   */
+  private requireSession(id: string | number | null): boolean {
+    if (!browserManager.isLaunched()) {
+      this.sendError(
+        id,
+        ErrorCode.NO_BROWSER_SESSION,
+        'No active browser session. Call browser_launch first.'
+      );
+      return false;
+    }
+    return true;
   }
 
   /**
@@ -309,14 +402,7 @@ export class MCPServer {
 
       const resultText = `Browser launched (headless: ${headless})`;
       
-      this.sendResult(id, {
-        content: [
-          {
-            type: 'text',
-            text: resultText,
-          },
-        ],
-      });
+      this.sendToolResult(id, resultText);
 
       logger.info('MCP Server: Browser launched successfully');
     } catch (error: any) {
@@ -329,6 +415,8 @@ export class MCPServer {
    * Tool: browser_navigate
    */
   private async toolBrowserNavigate(args: any, id: string | number | null): Promise<void> {
+    if (!this.requireSession(id)) return;
+
     try {
       const { url } = args;
 
@@ -341,25 +429,12 @@ export class MCPServer {
       
       await browserManager.navigate(url);
 
-      this.sendResult(id, {
-        content: [
-          {
-            type: 'text',
-            text: `Navigated to ${url}`,
-          },
-        ],
-      });
+      this.sendToolResult(id, `Navigated to ${url}`);
 
       logger.info('MCP Server: Navigation successful');
     } catch (error: any) {
       logger.error(`MCP Server: Error navigating: ${error.message}`);
-      
-      // Check if error is due to browser not being launched
-      if (error.message.includes('not launched') || error.message.includes('No browser')) {
-        this.sendError(id, ErrorCode.INTERNAL_ERROR, 'Browser not launched. Call browser_launch first.');
-      } else {
-        this.sendError(id, ErrorCode.INTERNAL_ERROR, `Failed to navigate: ${error.message}`);
-      }
+      this.sendError(id, ErrorCode.INTERNAL_ERROR, `Failed to navigate: ${error.message}`);
     }
   }
 
@@ -367,6 +442,8 @@ export class MCPServer {
    * Tool: browser_screenshot
    */
   private async toolBrowserScreenshot(args: any, id: string | number | null): Promise<void> {
+    if (!this.requireSession(id)) return;
+
     try {
       const { filename, returnBase64, fullPage } = args;
 
@@ -411,25 +488,12 @@ export class MCPServer {
         resultText = 'Screenshot captured';
       }
 
-      this.sendResult(id, {
-        content: [
-          {
-            type: 'text',
-            text: resultText,
-          },
-        ],
-      });
+      this.sendToolResult(id, resultText);
 
       logger.info('MCP Server: Screenshot successful');
     } catch (error: any) {
       logger.error(`MCP Server: Error taking screenshot: ${error.message}`);
-      
-      // Check if error is due to browser not being launched
-      if (error.message.includes('not launched') || error.message.includes('No browser')) {
-        this.sendError(id, ErrorCode.INTERNAL_ERROR, 'Browser not launched. Call browser_launch first.');
-      } else {
-        this.sendError(id, ErrorCode.INTERNAL_ERROR, `Failed to take screenshot: ${error.message}`);
-      }
+      this.sendError(id, ErrorCode.INTERNAL_ERROR, `Failed to take screenshot: ${error.message}`);
     }
   }
 
@@ -442,19 +506,110 @@ export class MCPServer {
       
       await browserManager.shutdown();
 
-      this.sendResult(id, {
-        content: [
-          {
-            type: 'text',
-            text: 'Browser session closed',
-          },
-        ],
-      });
+      this.sendToolResult(id, 'Browser session closed');
 
       logger.info('MCP Server: Browser session closed successfully');
     } catch (error: any) {
       logger.error(`MCP Server: Error closing browser: ${error.message}`);
       this.sendError(id, ErrorCode.INTERNAL_ERROR, `Failed to close browser: ${error.message}`);
+    }
+  }
+
+  /**
+   * Tool: browser_find
+   */
+  private async toolBrowserFind(args: any, id: string | number | null): Promise<void> {
+    if (!this.requireSession(id)) return;
+
+    try {
+      const { selector, timeoutMs } = args;
+
+      if (!selector || typeof selector !== 'string') {
+        this.sendError(id, ErrorCode.INVALID_PARAMS, 'Missing or invalid "selector" parameter');
+        return;
+      }
+
+      logger.info(`MCP Server: Finding element "${selector}"...`);
+
+      const info = await browserManager.getElementInfo(selector, { timeoutMs });
+
+      let resultText: string;
+      if (info.found) {
+        const bboxStr = info.boundingBox
+          ? `bbox=(${info.boundingBox.x},${info.boundingBox.y},${info.boundingBox.width},${info.boundingBox.height})`
+          : 'bbox=none';
+        resultText = `Found <${info.tag}> text="${info.text || ''}" ${bboxStr}`;
+      } else {
+        resultText = `Element not found for selector "${selector}"`;
+      }
+
+      this.sendToolResult(id, resultText, info);
+
+      logger.info(`MCP Server: Find completed (found: ${info.found})`);
+    } catch (error: any) {
+      logger.error(`MCP Server: Error finding element: ${error.message}`);
+      this.sendError(id, ErrorCode.INTERNAL_ERROR, `Failed to find element: ${error.message}`);
+    }
+  }
+
+  /**
+   * Tool: browser_click
+   */
+  private async toolBrowserClick(args: any, id: string | number | null): Promise<void> {
+    if (!this.requireSession(id)) return;
+
+    try {
+      const { selector, timeoutMs } = args;
+
+      if (!selector || typeof selector !== 'string') {
+        this.sendError(id, ErrorCode.INVALID_PARAMS, 'Missing or invalid "selector" parameter');
+        return;
+      }
+
+      logger.info(`MCP Server: Clicking selector "${selector}"...`);
+
+      await browserManager.click(selector, { timeoutMs });
+
+      this.sendToolResult(id, `Clicked selector "${selector}"`);
+
+      logger.info('MCP Server: Click successful');
+    } catch (error: any) {
+      logger.error(`MCP Server: Error clicking: ${error.message}`);
+      this.sendError(id, ErrorCode.INTERNAL_ERROR, `Failed to click: ${error.message}`);
+    }
+  }
+
+  /**
+   * Tool: browser_type
+   */
+  private async toolBrowserType(args: any, id: string | number | null): Promise<void> {
+    if (!this.requireSession(id)) return;
+
+    try {
+      const { selector, text, timeoutMs, clear } = args;
+
+      if (!selector || typeof selector !== 'string') {
+        this.sendError(id, ErrorCode.INVALID_PARAMS, 'Missing or invalid "selector" parameter');
+        return;
+      }
+
+      if (text === undefined || text === null) {
+        this.sendError(id, ErrorCode.INVALID_PARAMS, 'Missing "text" parameter');
+        return;
+      }
+
+      const textStr = String(text);
+
+      logger.info(`MCP Server: Typing into "${selector}" (${textStr.length} chars)...`);
+
+      await browserManager.type(selector, textStr, { timeoutMs, clear });
+
+      this.sendToolResult(id, `Typed into "${selector}" (${textStr.length} chars)`);
+
+      logger.info('MCP Server: Type successful');
+    } catch (error: any) {
+      logger.error(`MCP Server: Error typing: ${error.message}`);
+      this.sendError(id, ErrorCode.INTERNAL_ERROR, `Failed to type: ${error.message}`);
     }
   }
 
@@ -472,6 +627,27 @@ export class MCPServer {
     process.stdout.write(JSON.stringify(response) + '\n');
     
     logger.debug(`MCP Server: Sent result for id: ${id}`);
+  }
+
+  /**
+   * Send tool result with standard content format
+   * Helper to simplify tool responses
+   */
+  private sendToolResult(id: string | number | null, text: string, data?: any): void {
+    const result: any = {
+      content: [
+        {
+          type: 'text',
+          text,
+        },
+      ],
+    };
+
+    if (data !== undefined) {
+      result.data = data;
+    }
+
+    this.sendResult(id, result);
   }
 
   /**

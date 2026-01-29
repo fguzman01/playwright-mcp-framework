@@ -85,21 +85,39 @@ npm run demo:clean
 
 ## 🤖 For Agents: MCP Protocol
 
-> **Status:** ✅ Implemented - 4 tools available (browser_launch, browser_navigate, browser_screenshot, browser_quit)
+> **Status:** ✅ Implemented - 7 tools available
 
-AI agents (like Claude) will be able to control browsers via the Model Context Protocol (MCP).
+**What is MCP?**
+
+The [Model Context Protocol (MCP)](https://spec.modelcontextprotocol.io/) is a JSON-RPC based protocol that allows AI agents (like Claude) to interact with external tools and services. This framework implements an MCP server that exposes browser automation capabilities via stdio transport.
+
+**How it works:**
+- Agent sends JSON-RPC requests via stdin (one JSON per line)
+- Server executes browser operations using Playwright
+- Server responds with JSON-RPC responses via stdout
+- All logs go to stderr (never pollute stdout)
 
 ### Available Tools
 
-| Tool | Status | Description |
-|------|--------|-------------|
-| `browser_launch` | ✅ | Launch a Playwright browser (visible by default) |
-| `browser_navigate` | ✅ | Navigate to a URL |
-| `browser_screenshot` | ✅ | Capture viewport or full page screenshot |
-| `browser_quit` | ✅ | Close the browser session |
-| `browser_find` | 🚧 | Find elements on the page (planned) |
-| `browser_click` | 🚧 | Click on an element (planned) |
-| `browser_type` | 🚧 | Type text into an input (planned) |
+**7 Tools Implemented:**
+
+1. **`browser_launch`** - Start a new browser session (chromium). Options: headless mode, slowMo for debugging.
+2. **`browser_navigate`** - Navigate to any URL. Waits for page load before returning.
+3. **`browser_find`** - Search for elements by CSS selector. Returns tag name, text content, and bounding box coordinates.
+4. **`browser_click`** - Click on an element using CSS selector. Includes automatic actionability checks.
+5. **`browser_type`** - Type text into input fields. Supports clearing existing content and custom timeouts.
+6. **`browser_screenshot`** - Capture screenshots to file or return as base64. Supports full-page capture.
+7. **`browser_quit`** - Close the browser session and cleanup resources.
+
+| Tool | Status | Parameters |
+|------|--------|------------|
+| `browser_launch` | ✅ | `headless?: boolean` |
+| `browser_navigate` | ✅ | `url: string` |
+| `browser_find` | ✅ | `selector: string, timeoutMs?: number` |
+| `browser_click` | ✅ | `selector: string, timeoutMs?: number` |
+| `browser_type` | ✅ | `selector: string, text: string, timeoutMs?: number, clear?: boolean` |
+| `browser_screenshot` | ✅ | `filename?: string, fullPage?: boolean, returnBase64?: boolean` |
+| `browser_quit` | ✅ | _(no parameters)_ |
 
 ### Running the MCP Server
 
@@ -109,34 +127,78 @@ Start the JSON-RPC server on stdio:
 npm run mcp
 ```
 
-The server listens for JSON-RPC requests on stdin and responds on stdout. All logs go to stderr.
+**Important:** The server uses stdio transport:
+- **stdin**: Receives JSON-RPC requests (one per line)
+- **stdout**: Sends JSON-RPC responses (JSON only, one per line)
+- **stderr**: Logs and debugging information
 
-### Example Agent Flow
+### Manual Testing
 
+You can test the server manually by piping JSON requests to stdin. Here are some examples you can copy/paste:
+
+**1. Initialize the server:**
 ```json
-// 1. Initialize
 {"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}
-
-// 2. List available tools
-{"jsonrpc":"2.0","id":2,"method":"tools/list"}
-
-// 3. Launch browser
-{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"browser_launch","arguments":{"headless":false}}}
-
-// 4. Navigate
-{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"browser_navigate","arguments":{"url":"https://example.com"}}}
-
-// 5. Screenshot
-{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"browser_screenshot","arguments":{"filename":"test.png","fullPage":true}}}
-
-// 6. Quit
-{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"browser_quit","arguments":{}}}
 ```
+
+**2. List available tools:**
+```json
+{"jsonrpc":"2.0","id":2,"method":"tools/list"}
+```
+
+**3. Launch browser (headless):**
+```json
+{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"browser_launch","arguments":{"headless":true}}}
+```
+
+**4. Navigate to a URL:**
+```json
+{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"browser_navigate","arguments":{"url":"https://example.com"}}}
+```
+
+**5. Find an element:**
+```json
+{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"browser_find","arguments":{"selector":"h1","timeoutMs":5000}}}
+```
+
+**6. Click an element:**
+```json
+{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"browser_click","arguments":{"selector":"a"}}}
+```
+
+**7. Type into an input:**
+```json
+{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"browser_type","arguments":{"selector":"input[type='text']","text":"Hello World"}}}
+```
+
+**8. Take a screenshot:**
+```json
+{"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"browser_screenshot","arguments":{"filename":"test.png","fullPage":true}}}
+```
+
+**9. Quit browser:**
+```json
+{"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"browser_quit","arguments":{}}}
+```
+
+### Automated Testing
+
+Run the smoke test suite to verify all tools work correctly:
+
+```bash
+npm run test:mcp
+```
+
+This executes an end-to-end test that:
+1. Starts the MCP server as a subprocess
+2. Initializes and lists tools
+3. Executes a complete browser workflow (launch → navigate → find → screenshot → quit)
+4. Validates all responses
 
 **Implementation Status:**
 - Phase 1: Core components (BrowserManager, Logger, Config) - ✅ Complete
-- Phase 2: MCP Server + 4 basic tools - ✅ Complete
-- Phase 3: Additional tools (click, type, find) + Claude Desktop - 🚧 Planned
+- Phase 2: MCP Server + 7 tools - ✅ Complete
+- Phase 3: Claude Desktop integration - 🚧 Planned
 
 ---
 
@@ -171,6 +233,56 @@ playwright-mcp-framework/
 ---
 
 ## 🔧 Configuration
+
+### Environment Variables
+
+Configure the framework behavior using environment variables:
+
+| Variable | Description | Default | Example |
+|----------|-------------|---------|---------|
+| `HEADLESS` | Run browser in headless mode | `false` | `HEADLESS=true` |
+| `SLOWMO_MS` | Slow down browser operations (ms) | `0` | `SLOWMO_MS=500` |
+| `DEFAULT_TIMEOUT_MS` | Default timeout for operations (ms) | `30000` | `DEFAULT_TIMEOUT_MS=60000` |
+| `SCREENSHOT_DIR` | Directory for screenshots | `./screenshots` | `SCREENSHOT_DIR=./output` |
+| `LOG_LEVEL` | Logging verbosity level | `info` | `LOG_LEVEL=debug` |
+
+**Log Levels:**
+- `debug` - Verbose logging (all operations)
+- `info` - Normal logging (default)
+- `warn` - Warnings only
+- `error` - Errors only
+
+**Usage Examples:**
+
+```bash
+# Run tests in headless mode with debug logging
+HEADLESS=true LOG_LEVEL=debug npm test
+
+# Slow down browser for debugging
+SLOWMO_MS=1000 npm run demo
+
+# Custom screenshot directory
+SCREENSHOT_DIR=./test-output npm test
+
+# Increase timeout for slow networks
+DEFAULT_TIMEOUT_MS=60000 npm run demo
+```
+
+**Windows (PowerShell):**
+```powershell
+$env:HEADLESS="true"
+$env:LOG_LEVEL="debug"
+npm test
+```
+
+**Windows (CMD):**
+```cmd
+set HEADLESS=true
+set LOG_LEVEL=debug
+npm test
+```
+
+### Playwright Configuration
 
 See [playwright.config.ts](playwright.config.ts) for test configuration.
 
